@@ -1,5 +1,5 @@
 // src/HistoryPage.jsx
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
   LineChart,
@@ -10,8 +10,10 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { KPIS, LEVELS, getAllTrends } from "./data";
+import { Loader2 } from "lucide-react";
+import { LEVELS } from "./data";
 import { ChartCard, LevelChip } from "./UIComponents";
+import { fetchKpiHistory } from "./api";
 
 // Couleurs distinctes pour tracer plusieurs courbes sur le même graphique
 const LINE_COLORS = [
@@ -19,13 +21,55 @@ const LINE_COLORS = [
   "#ec4899", "#14b8a6", "#f97316", "#6366f1", "#84cc16",
 ];
 
-export default function HistoryPage() {
-  const allTrends = useMemo(() => getAllTrends(), []);
+const MONTH_LABELS = [
+  "Jan", "Fév", "Mar", "Avr", "Mai", "Juin",
+  "Juil", "Août", "Sep", "Oct", "Nov", "Déc",
+];
 
-  // Par défaut, on affiche les KPIs critiques (les plus importants à suivre)
-  const [selectedIds, setSelectedIds] = useState(
-    KPIS.filter((k) => k.niveau === "critique").map((k) => k.id)
+function formatMonth(dateStr) {
+  const d = new Date(dateStr);
+  return `${MONTH_LABELS[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// HistoryPage reçoit `kpis` (les vraies données du backend) et va chercher
+// le vrai historique de chacun via l'API, au lieu de données simulées.
+export default function HistoryPage({ kpis }) {
+  const [historyMap, setHistoryMap] = useState({}); // { kpiId: [{date, valeur}] }
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  const [selectedIds, setSelectedIds] = useState(() =>
+    kpis.filter((k) => k.niveau === "critique").map((k) => k.id)
   );
+
+  // Charge l'historique réel de tous les indicateurs (une fois, ou si la liste change)
+  useEffect(() => {
+    if (kpis.length === 0) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    Promise.all(
+      kpis.map((k) =>
+        fetchKpiHistory(k.id)
+          .then((data) => [k.id, data])
+          .catch(() => [k.id, []])
+      )
+    )
+      .then((results) => {
+        const map = {};
+        results.forEach(([id, data]) => {
+          map[id] = data;
+        });
+        setHistoryMap(map);
+      })
+      .catch((err) => {
+        console.error(err);
+        setError("Impossible de charger l'historique des indicateurs.");
+      })
+      .finally(() => setLoading(false));
+  }, [kpis]);
 
   function toggleKpi(id) {
     setSelectedIds((prev) =>
@@ -34,14 +78,51 @@ export default function HistoryPage() {
   }
 
   function selectAll() {
-    setSelectedIds(KPIS.map((k) => k.id));
+    setSelectedIds(kpis.map((k) => k.id));
   }
 
   function clearAll() {
     setSelectedIds([]);
   }
 
-  const selectedKpis = KPIS.filter((k) => selectedIds.includes(k.id));
+  const selectedKpis = kpis.filter((k) => selectedIds.includes(k.id));
+
+  // Fusionne l'historique des indicateurs sélectionnés : union de toutes les
+  // dates rencontrées, triées, avec la valeur de chaque KPI à cette date
+  // (null si ce KPI n'a pas de point à cette date précise).
+  const mergedData = useMemo(() => {
+    const dateSet = new Set();
+    selectedKpis.forEach((k) => {
+      (historyMap[k.id] || []).forEach((point) => dateSet.add(point.date));
+    });
+    const sortedDates = Array.from(dateSet).sort();
+
+    return sortedDates.map((date) => {
+      const row = { date, month: formatMonth(date) };
+      selectedKpis.forEach((k) => {
+        const point = (historyMap[k.id] || []).find((p) => p.date === date);
+        row[k.name] = point ? point.valeur : null;
+      });
+      return row;
+    });
+  }, [selectedKpis, historyMap]);
+
+  if (loading) {
+    return (
+      <div className="flex h-[300px] flex-col items-center justify-center gap-3 text-slate-400">
+        <Loader2 size={28} className="animate-spin" />
+        <p className="text-sm">Chargement de l'historique…</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4">
+        <p className="text-sm font-medium text-amber-700">{error}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -66,7 +147,7 @@ export default function HistoryPage() {
         }
       >
         <div className="flex flex-wrap gap-2">
-          {KPIS.map((k) => {
+          {kpis.map((k) => {
             const active = selectedIds.includes(k.id);
             const l = LEVELS[k.niveau];
             return (
@@ -92,15 +173,19 @@ export default function HistoryPage() {
       </ChartCard>
 
       {/* Courbe comparative multi-indicateurs */}
-      <ChartCard title="Évolution comparée sur 6 mois">
+      <ChartCard title="Évolution comparée">
         {selectedKpis.length === 0 ? (
           <p className="py-10 text-center text-sm text-slate-400">
             Sélectionnez au moins un indicateur pour afficher son évolution.
           </p>
+        ) : mergedData.length === 0 ? (
+          <p className="py-10 text-center text-sm text-slate-400">
+            Pas encore assez d'historique pour ces indicateurs.
+          </p>
         ) : (
           <ResponsiveContainer width="100%" height={340}>
             <LineChart
-              data={allTrends}
+              data={mergedData}
               margin={{ top: 8, right: 16, left: -16, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -111,7 +196,7 @@ export default function HistoryPage() {
                 tickFormatter={(v) => `${v}%`}
               />
               <Tooltip
-                formatter={(value) => [`${value}%`, ""]}
+                formatter={(value) => [value != null ? `${value}%` : "—", ""]}
                 contentStyle={{
                   borderRadius: 12,
                   border: "1px solid #e2e8f0",
@@ -128,6 +213,7 @@ export default function HistoryPage() {
                   strokeWidth={2.2}
                   dot={{ r: 2.5 }}
                   activeDot={{ r: 5 }}
+                  connectNulls
                 />
               ))}
             </LineChart>
@@ -135,43 +221,49 @@ export default function HistoryPage() {
         )}
       </ChartCard>
 
-      {/* Tableau détaillé mois par mois */}
-      <ChartCard title="Détail des valeurs mensuelles">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-y border-slate-100 text-[11px] font-semibold tracking-wider text-slate-400">
-                <th className="px-4 py-3">INDICATEUR</th>
-                {allTrends.map((row) => (
-                  <th key={row.month} className="px-4 py-3 text-center">
-                    {row.month.toUpperCase()}
-                  </th>
-                ))}
-                <th className="px-4 py-3">NIVEAU</th>
-              </tr>
-            </thead>
-            <tbody>
-              {KPIS.map((k) => (
-                <tr
-                  key={k.id}
-                  className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60"
-                >
-                  <td className="px-4 py-3 font-medium text-slate-800">
-                    {k.name}
-                  </td>
-                  {allTrends.map((row) => (
-                    <td key={row.month} className="px-4 py-3 text-center text-slate-600">
-                      {row[k.name]}%
-                    </td>
+      {/* Tableau détaillé, date par date */}
+      <ChartCard title="Détail des valeurs enregistrées">
+        {mergedData.length === 0 ? (
+          <p className="py-10 text-center text-sm text-slate-400">
+            Aucune donnée d'historique pour le moment.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-y border-slate-100 text-[11px] font-semibold tracking-wider text-slate-400">
+                  <th className="px-4 py-3">INDICATEUR</th>
+                  {mergedData.map((row) => (
+                    <th key={row.date} className="px-4 py-3 text-center">
+                      {row.month.toUpperCase()}
+                    </th>
                   ))}
-                  <td className="px-4 py-3">
-                    <LevelChip niveau={k.niveau} />
-                  </td>
+                  <th className="px-4 py-3">NIVEAU</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {selectedKpis.map((k) => (
+                  <tr
+                    key={k.id}
+                    className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60"
+                  >
+                    <td className="px-4 py-3 font-medium text-slate-800">
+                      {k.name}
+                    </td>
+                    {mergedData.map((row) => (
+                      <td key={row.date} className="px-4 py-3 text-center text-slate-600">
+                        {row[k.name] != null ? `${row[k.name]}%` : "—"}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3">
+                      <LevelChip niveau={k.niveau} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </ChartCard>
     </div>
   );

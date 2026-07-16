@@ -21,7 +21,7 @@ import {
   Trash2,
   Loader2,
 } from "lucide-react";
-
+import { generateKpiPdf } from "./pdfUtils";
 import { LEVELS } from "./data";
 import { TrendIcon, LevelChip, StatCard } from "./UIComponents";
 import IndicatorsPage from "./IndicatorsPage";
@@ -37,7 +37,7 @@ import KpiFormModal from "./KpiFormModal";
 const NAV_MAIN = [
   { key: "overview", label: "Vue d'ensemble", icon: LayoutGrid },
   { key: "indicators", label: "Indicateurs", icon: BarChart3 },
-  { key: "alerts", label: "Alertes", icon: AlertTriangle, badge: 4 },
+  { key: "alerts", label: "Alertes", icon: AlertTriangle },
   { key: "history", label: "Historique", icon: History },
 ];
 
@@ -78,7 +78,7 @@ export default function CSIDashboard() {
     if (filter === "tous") return kpis;
     return kpis.filter((k) => k.niveau === filter);
   }, [kpis, filter]);
-
+const activeAlertsCount = counts.critique + counts.faible;
   // ---------------------------------------------------------------------
   // CRUD — branché sur l'API Spring Boot via le hook useKpis().
   // ---------------------------------------------------------------------
@@ -142,14 +142,21 @@ export default function CSIDashboard() {
     { key: "moyen", label: "Moyen" },
     { key: "acceptable", label: "Acceptable" },
   ];
-
+function handleExportPdf() {
+  const label = filter === "tous" ? "tous niveaux" : LEVELS[filter].label;
+  generateKpiPdf({
+    titre: "Vue d'ensemble — Indicateurs de sécurité",
+    sousTitre: `${filteredKpis.length} indicateur(s) affiché(s) · Filtre : ${label}`,
+    kpis: filteredKpis,
+  });
+}
   function handleDetails(kpiId) {
     setSelectedId(kpiId);
     setActiveNav("indicators");
   }
 
   return (
-    <div className="flex h-full min-h-[720px] w-full bg-slate-50 text-slate-800">
+    <div className="flex min-h-screen w-full bg-slate-50 text-slate-800">
       {/* ------------------------------------------------------------- */}
       {/* Sidebar */}
       {/* ------------------------------------------------------------- */}
@@ -186,7 +193,13 @@ export default function CSIDashboard() {
                       <Icon size={17} />
                       {item.label}
                     </span>
-                    {item.badge ? (
+                    {item.key === "alerts" ? (
+                      activeAlertsCount > 0 && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white">
+                          {activeAlertsCount}
+                        </span>
+                      )
+                    ) : item.badge ? (
                       <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-semibold text-white">
                         {item.badge}
                       </span>
@@ -258,15 +271,21 @@ export default function CSIDashboard() {
               <RefreshCw size={15} />
               Actualiser
             </button>
-            <button className="flex items-center gap-2 rounded-lg border border-bfpme-navy px-3.5 py-2 text-sm font-medium text-bfpme-navy hover:bg-bfpme-navy/5">
+            <button
+              onClick={handleExportPdf}
+              className="flex items-center gap-2 rounded-lg border border-bfpme-navy px-3.5 py-2 text-sm font-medium text-bfpme-navy hover:bg-bfpme-navy/5"
+            >
               <Download size={15} />
               Exporter PDF
             </button>
-            <button className="flex items-center gap-2 rounded-lg bg-red-50 px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-100">
+            <button
+              onClick={() => setActiveNav("alerts")}
+              className="flex items-center gap-2 rounded-lg bg-red-50 px-3.5 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
+            >
               <Bell size={15} />
               Alertes actives
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-semibold text-white">
-                {counts.critique}
+                {activeAlertsCount}
               </span>
             </button>
           </div>
