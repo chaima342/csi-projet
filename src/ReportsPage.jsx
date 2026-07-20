@@ -1,16 +1,13 @@
 // src/ReportsPage.jsx
 import React, { useState } from "react";
-import { FileText, Download, Calendar, CheckCircle2, Trash2 } from "lucide-react";
+import { FileText, Download, Calendar, CheckCircle2 } from "lucide-react";
 import { LEVELS } from "./data";
 import { ChartCard, LevelChip } from "./UIComponents";
 import { useReportHistory } from "./useReportHistory";
 import { computeSummary, generateKpiPdf } from "./pdfUtils";
 
-const PERIODS = ["Mensuel", "Trimestriel", "Annuel"];
-
 // ReportsPage reçoit `kpis` (les vraies données du backend)
 export default function ReportsPage({ kpis }) {
-  const [period, setPeriod] = useState("Mensuel");
   const [niveauFilter, setNiveauFilter] = useState("tous");
   const [generated, setGenerated] = useState(false);
 
@@ -24,7 +21,7 @@ export default function ReportsPage({ kpis }) {
       : kpis.filter((k) => k.niveau === niveauFilter);
 
   function handleGenerate() {
-    const titre = `Rapport ${period.toLowerCase()} — Indicateurs de sécurité`;
+    const titre = "Rapport — Indicateurs de sécurité";
     const sousTitre =
       niveauFilter === "tous"
         ? `${kpisForReport.length} indicateurs inclus`
@@ -33,7 +30,7 @@ export default function ReportsPage({ kpis }) {
     generateKpiPdf({ titre, sousTitre, kpis: kpisForReport });
 
     // Enregistre ce rapport dans le vrai historique, avec la date du jour
-    addReport({ titre, type: period });
+    addReport({ titre, type: "Rapport" });
 
     setGenerated(true);
     setTimeout(() => setGenerated(false), 2000);
@@ -53,48 +50,26 @@ export default function ReportsPage({ kpis }) {
     <div className="space-y-6">
       {/* Configuration du rapport à générer */}
       <ChartCard title="Générer un nouveau rapport">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-          <div>
-            <p className="mb-2 text-sm font-medium text-slate-600">Période</p>
-            <div className="flex gap-2">
-              {PERIODS.map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPeriod(p)}
-                  className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ${
-                    period === p
-                      ? "border-blue-600 bg-blue-50 text-blue-600"
-                      : "border-slate-200 text-slate-500 hover:bg-slate-50"
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-2 text-sm font-medium text-slate-600">
-              Indicateurs à inclure
-            </p>
-            <select
-              value={niveauFilter}
-              onChange={(e) => setNiveauFilter(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 px-3.5 py-2 text-sm text-slate-600 focus:border-blue-400 focus:outline-none"
-            >
-              <option value="tous">Tous les indicateurs ({kpis.length})</option>
-              <option value="critique">Critique uniquement</option>
-              <option value="faible">Faible uniquement</option>
-              <option value="moyen">Moyen uniquement</option>
-              <option value="acceptable">Acceptable uniquement</option>
-            </select>
-          </div>
+        <div>
+          <p className="mb-2 text-sm font-medium text-slate-600">
+            Indicateurs à inclure
+          </p>
+          <select
+            value={niveauFilter}
+            onChange={(e) => setNiveauFilter(e.target.value)}
+            className="w-full max-w-sm rounded-lg border border-slate-200 px-3.5 py-2 text-sm text-slate-600 focus:border-blue-400 focus:outline-none"
+          >
+            <option value="tous">Tous les indicateurs ({kpis.length})</option>
+            <option value="critique">Critique uniquement</option>
+            <option value="faible">Faible uniquement</option>
+            <option value="moyen">Moyen uniquement</option>
+            <option value="acceptable">Acceptable uniquement</option>
+          </select>
         </div>
 
         <div className="mt-5 flex items-center justify-between rounded-lg bg-slate-50 px-4 py-3">
           <p className="text-sm text-slate-500">
-            Le rapport inclura <strong>{kpisForReport.length}</strong> indicateur(s)
-            sur la période <strong>{period.toLowerCase()}</strong>.
+            Le rapport inclura <strong>{kpisForReport.length}</strong> indicateur(s).
           </p>
           <button
             onClick={handleGenerate}

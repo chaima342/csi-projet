@@ -241,7 +241,7 @@ function handleExportPdf() {
             RS
           </div>
           <div className="leading-tight">
-            <p className="text-sm font-medium text-white">Rami Stagiaire</p>
+            <p className="text-sm font-medium text-white">Hichem MARZOUKI</p>
             <p className="text-xs text-slate-400">Administrateur</p>
           </div>
         </div>
